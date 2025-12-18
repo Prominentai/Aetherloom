@@ -78,8 +78,10 @@ Running multiple applications simultaneously is possible, with the progress of a
 
 
 支持隐私保护，你可以将AI应用在线生成的视图加密后下载到本地再进行解码，防止线上个人隐私泄露；在应用界面右上角勾选本地解码可以在任务完成同时解码返回的文件，并展示解码后预览。
+目前仅支持Grid Reversal Codec（GRC）编解码，在线编码工作流详见：https://www.runninghub.cn/post/1970743440852066305/aiDetail.
 
 Support privacy protection: you can encrypt views generated online by AI applications and download them to your local machine for decoding to prevent leakage of personal privacy online; Check the Local Decode option in the upper-right corner of the application interface to enable direct decoding of returned files upon task completion and displaying a decoded preview.
+Currently only Grid Reversal Codec (GRC) encoding and decoding is supported. For the online encoding workflow, please refer to: https://www.runninghub.ai/post/1970743440852066305/aiDetail.
 
 <img width="3154" height="1809" alt="image" src="https://github.com/user-attachments/assets/22931105-aedf-44ea-8aed-bc4108797c01" />
 
