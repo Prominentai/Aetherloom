@@ -98,7 +98,7 @@ Support local view management with rich filtering capabilities and XY chart comp
 
 
 
-点击我的 Runninghub 邀请链接：[https://www.runninghub.ai/?inviteCode=rh-v1380](https://www.runninghub.ai/?inviteCode=rh-v1380). 注册互得免费1000RH币。
+点击我的 Runninghub 邀请链接：[https://www.runninghub.cn/?inviteCode=rh-v1380](https://www.runninghub.cn/?inviteCode=rh-v1380). 注册互得免费1000RH币。
 
 Open my Runninghub invitation link: [https://www.runninghub.ai/?inviteCode=rh-v1380](https://www.runninghub.ai/?inviteCode=rh-v1380). Register and get 1000 free RH coins for each other.
 
