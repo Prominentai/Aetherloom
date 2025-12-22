@@ -89,7 +89,7 @@ Running multiple applications simultaneously is possible, with the progress of a
 
 Support privacy protection: you can encrypt views generated online by AI applications and download them to your local machine for decoding to prevent leakage of personal privacy online; Check the Local Decode option in the upper-right corner of the application interface to enable direct decoding of returned files upon task completion and displaying a decoded preview.
 
-Currently only Grid Reversal Codec (GRC) encoding and decoding is supported. For the online encoding workflow, please refer to: [https://www.runninghub.cn/post/1970743440852066305/aiDetail/?inviteCode=rh-v1380](https://www.runninghub.cn/post/1970743440852066305/aiDetail/?inviteCode=rh-v1380).
+Currently only Grid Reversal Codec (GRC) encoding and decoding is supported. For the online encoding workflow, please refer to: [https://www.runninghub.ai/post/1970743440852066305/aiDetail/?inviteCode=rh-v1380](https://www.runninghub.ai/post/1970743440852066305/aiDetail/?inviteCode=rh-v1380).
 
 <img width="3154" height="1809" alt="image" src="https://github.com/user-attachments/assets/22931105-aedf-44ea-8aed-bc4108797c01" />
 
@@ -102,7 +102,7 @@ Support local view management with rich filtering capabilities and XY chart comp
 <img width="3154" height="1809" alt="image" src="https://github.com/user-attachments/assets/edc8d7c7-4d07-479b-9298-d206c178134e" />
 
 
-可以填写我的网站邀请码rh-v1380互相白嫖1000RH币，权当支持一下作者吧。
+可以填写我的网站邀请码[rh-v1380](https://www.runninghub.cn/?inviteCode=rh-v1380)互相白嫖1000RH币，权当支持一下作者吧。
 
-Feel free to use my website invite code rh-v1380, we'll both get 1000 RH coins for free, just to support the author.
+Feel free to use my website invite code [rh-v1380](https://www.runninghub.ai/?inviteCode=rh-v1380), we'll both get 1000 RH coins for free, just to support the author.
 
