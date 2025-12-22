@@ -62,7 +62,12 @@ Currently implemented features:
 5. Prompt translation and expansion
 6. Image inference (batch supported)
 
-   
+
+可以填写我的Runninghub网站邀请码[rh-v1380](https://www.runninghub.cn/?inviteCode=rh-v1380)，互相白嫖1000RH币，权当支持一下作者吧。
+
+Feel free to use my Runninghub invite code [rh-v1380](https://www.runninghub.ai/?inviteCode=rh-v1380), we'll both get 1000 RH coins for free, just to support the author.
+
+
 # v0.1.0 alpha版部分功能展示
 # Some Features in v0.1.0 Alpha ver.
 
@@ -102,7 +107,5 @@ Support local view management with rich filtering capabilities and XY chart comp
 <img width="3154" height="1809" alt="image" src="https://github.com/user-attachments/assets/edc8d7c7-4d07-479b-9298-d206c178134e" />
 
 
-可以填写我的Runninghub网站邀请码[rh-v1380](https://www.runninghub.cn/?inviteCode=rh-v1380)，互相白嫖1000RH币，权当支持一下作者吧。
 
-Feel free to use my Runninghub invite code [rh-v1380](https://www.runninghub.ai/?inviteCode=rh-v1380), we'll both get 1000 RH coins for free, just to support the author.
 
