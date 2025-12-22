@@ -102,6 +102,7 @@ Support local view management with rich filtering capabilities and XY chart comp
 <img width="3154" height="1809" alt="image" src="https://github.com/user-attachments/assets/edc8d7c7-4d07-479b-9298-d206c178134e" />
 
 
+可以填写我的网站邀请码rh-v1380互相白嫖1000RH币，权当支持一下作者吧。
 
-
+Feel free to use my website invite code rh-v1380, we'll both get 1000 RH coins for free, just to support the author.
 
