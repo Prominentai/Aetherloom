@@ -63,11 +63,6 @@ Currently implemented features:
 6. Image inference (batch supported)
 
 
-可以填写我的Runninghub网站邀请码[rh-v1380](https://www.runninghub.cn/?inviteCode=rh-v1380)，互相白嫖1000RH币，权当支持一下作者吧。
-
-Feel free to use my Runninghub invite code [rh-v1380](https://www.runninghub.ai/?inviteCode=rh-v1380), we'll both get 1000 RH coins for free, just to support the author.
-
-
 # v0.1.0 alpha版部分功能展示
 # Some Features in v0.1.0 Alpha ver.
 
