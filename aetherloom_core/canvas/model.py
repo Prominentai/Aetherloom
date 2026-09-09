@@ -20,7 +20,7 @@ MEDIA_SUFFIXES = {
     'audio': {'.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.opus'},
 }
 TITLES = {'app': 'App', 'image': '图像导入', 'video': '视频导入',
-          'audio': '音频导入', 'text': '文本', 'select': '结果选择', 'preview': '预览 / 保存'}
+          'audio': '音频导入', 'text': '文本', 'select': '内容过滤', 'preview': '预览 / 保存'}
 RUNTIME_FIELDS = frozenset({'results', 'result_signatures', 'fingerprint', 'status', 'progress', 'node_progress',
                             'message', 'error', 'generation', 'cached', 'stale', 'activated',
                             '_restored_missing_results', '_restored_positions_ambiguous'})
@@ -168,13 +168,19 @@ def app_fields(node):
     return app.get('nodes') or app.get('nodeInfoList') or []
 
 
+def node_title(node):
+    title = str(node.get('title') or TITLES.get(node.get('kind'), '节点'))
+    # Display old default titles consistently without changing JSON/snapshots.
+    return TITLES['select'] if node.get('kind') == 'select' and title == '结果选择' else title
+
+
 def input_ports(node):
     if node.get('kind') == 'app':
         return [{'key': parameter_key(field),
                  'label': str(field.get('description') or field.get('fieldName') or '输入'),
                  'type': field_type(field)} for field in app_fields(node)]
     if node.get('kind') in ('select', 'preview'):
-        return [{'key': 'value', 'label': '结果', 'type': 'any'}]
+        return [{'key': 'value', 'label': '内容' if node['kind'] == 'select' else '结果', 'type': 'any'}]
     return []
 
 
@@ -272,7 +278,10 @@ def validate_node(node):
         raise ValueError('节点结果格式错误')
 
 
-def connect(document, source, target, input, mode='first', indices=None):
+def connect(document, source, target, input, mode=None, indices=None):
+    if mode is None:
+        target_node = next((node for node in document['nodes'] if node['id'] == target), {})
+        mode = 'all' if target_node.get('kind') == 'select' else 'first'
     edge = {'id': uuid.uuid4().hex, 'source': source, 'target': target,
             'input': input, 'mode': mode, 'indices': list(indices or [])}
     candidate = dict(document, edges=list(document['edges']) + [edge])

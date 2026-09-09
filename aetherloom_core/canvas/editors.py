@@ -10,7 +10,7 @@ from aetherloom_core.rh_parameters import RhNumberSpinBox, RhEnumComboBox, confi
 from aetherloom_core.rh_model_picker import ModelField, model_resource_type
 from aetherloom_core.prompt_history import PromptHistory
 from aetherloom_core.ui.widgets import CompletionTextEdit
-from .model import parameter_key, field_type
+from .model import parameter_key, field_type, node_title
 
 
 FILE_FILTERS = {
@@ -127,7 +127,7 @@ class Inspector(QtWidgets.QWidget):
                 self.tab_forms.append(layout)
             root_form.addWidget(self.tabs, 1)
             self.form = self.tab_forms[0]
-        name = QtWidgets.QLineEdit(str(node.get('title', '')))
+        name = QtWidgets.QLineEdit(node_title(node))
         name.setPlaceholderText('节点名称')
         name.editingFinished.connect(lambda: self.changed.emit('title', name.text().strip() or '节点'))
         self.form.addWidget(name)
@@ -182,13 +182,18 @@ class Inspector(QtWidgets.QWidget):
                 type_combo.addItem(label, value)
             type_combo.setCurrentIndex(max(0, type_combo.findData(node.get('params', {}).get('type', 'any'))))
             type_combo.currentIndexChanged.connect(lambda: self.changed.emit('params.type', type_combo.currentData()))
-            self.form.addWidget(QtWidgets.QLabel('结果类型'))
+            self.form.addWidget(QtWidgets.QLabel('保留的内容类型'))
             self.form.addWidget(type_combo)
-            indices = QtWidgets.QLineEdit(', '.join(map(str, node.get('params', {}).get('indices') or [1])))
-            indices.setPlaceholderText('例如 1, 3（从 1 开始）')
+            indices = QtWidgets.QLineEdit(', '.join(map(str, node.get('params', {}).get('indices') or [])))
+            indices.setPlaceholderText('留空保留全部；例如 1, 3')
+            indices.setObjectName('canvasFilterIndices')
             indices.editingFinished.connect(lambda: self._indices_changed(indices, 'params.indices'))
             self.form.addWidget(QtWidgets.QLabel('保留的序号'))
             self.form.addWidget(indices)
+            hint = QtWidgets.QLabel('先按类型过滤，再按该类型内的序号保留内容（从 1 开始）。新连线默认传入全部内容；不修改原文件。')
+            hint.setWordWrap(True)
+            hint.setObjectName('canvasMuted')
+            self.form.addWidget(hint)
         if node['kind'] != 'app':
             reuse_hint = QtWidgets.QLabel('内置节点自动复用未变化的有效结果。')
             reuse_hint.setObjectName('canvasBuiltinReuseHint')
@@ -200,7 +205,7 @@ class Inspector(QtWidgets.QWidget):
 
     def _indices_changed(self, editor, path):
         try:
-            values = parse_indices(editor.text())
+            values = parse_indices(editor.text()) if editor.text().strip() else []
             editor.setProperty('invalid', False)
             self.changed.emit(path, values)
         except (ValueError, TypeError):

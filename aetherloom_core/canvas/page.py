@@ -18,6 +18,7 @@ from .workflow_queue import ensure_workflow_queue
 from .workflow_queue_panel import show_workflow_queue
 from .graphics import CanvasScene, CanvasView, NodeItem, EdgeItem, KIND_NAMES, STATUS_NAMES
 from .editors import Inspector, EdgeInspector
+from .controls import CanvasStatus
 
 
 RUNTIME_FIELDS = ('results', 'result_signatures', 'fingerprint', 'status', 'progress', 'node_progress', 'message', 'error', 'generation', 'cached', 'stale', 'activated', '_restored_missing_results', '_restored_positions_ambiguous')
@@ -429,9 +430,9 @@ class CanvasPage(QtWidgets.QWidget):
         self.splitter.setStretchFactor(2, 0)
         layout.addWidget(self.splitter, 1)
         footer = QtWidgets.QHBoxLayout()
-        self.status_label = QtWidgets.QLabel('双击空白 / Tab 添加 · 拖线到空白添加兼容节点 · 中键 / 空格拖动画布')
+        self.status_label = CanvasStatus('双击 / Tab 添加节点 · 中键 / 空格拖动画布')
         self.status_label.setObjectName('canvasMuted')
-        self.status_label.setWordWrap(True)
+        self.status_label.setWordWrap(False)
         footer.addWidget(self.status_label, 1)
         self.zoom_label = QtWidgets.QLabel('100%')
         self.zoom_label.setObjectName('canvasMuted')
@@ -1511,9 +1512,6 @@ class CanvasPage(QtWidgets.QWidget):
 
     def _message(self, text):
         self.status_label.setText(str(text))
-        toast = getattr(self.owner, '_show_toast', None)
-        if toast:
-            toast(str(text), 4000)
 
     def _toggle_inspector(self, checked):
         self.inspector_scroll.setVisible(checked)

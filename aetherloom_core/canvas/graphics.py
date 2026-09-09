@@ -14,7 +14,7 @@ from .appearance import tint, kind_color, draw_kind_icon
 
 
 KIND_NAMES = {'app': 'APP', 'image': '图像', 'video': '视频', 'audio': '音频',
-              'text': '文本', 'select': '结果选择', 'preview': '预览 / 保存'}
+              'text': '文本', 'select': '内容过滤', 'preview': '预览 / 保存'}
 STATUS_NAMES = {'IDLE': '就绪', 'READY': '就绪', 'WAITING': '等待上游',
                 'SKIPPED': '已跳过', 'INTERRUPTED': '会话已中断',
                 'PENDING': '等待上游',
@@ -405,7 +405,7 @@ class NodeItem(QtWidgets.QGraphicsObject):
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(QtGui.QColor(p['text']))
-        title = str(self.node.get('title') or KIND_NAMES.get(self.node['kind'], '节点'))
+        title = model.node_title(self.node)
         painter.drawText(QtCore.QRectF(50,7,self.width-127,21),QtCore.Qt.AlignVCenter,
                          QtGui.QFontMetrics(font).elidedText(title,QtCore.Qt.ElideRight,int(self.width-128)))
         if lod<.35:
@@ -994,6 +994,8 @@ class CanvasView(QtWidgets.QGraphicsView):
         self.overlay_exclusion = 0
         self.bottom_exclusion = 0
         self._view_reference = None
+        self._screen_window = None
+        self._observed_screen = None
         self._adapting = False
         self._adapt_timer = QtCore.QTimer(self)
         self._adapt_timer.setSingleShot(True)
@@ -1012,8 +1014,40 @@ class CanvasView(QtWidgets.QGraphicsView):
         if self._adapting:
             return
         rect = self.available_rect()
-        self._view_reference = (rect.size(), self.transform().m11(),
+        self._view_reference = (self.screen_size(), self.transform().m11(),
                                 self.mapToScene(rect.center().toPoint()))
+
+    def screen_size(self):
+        # QScreen reports logical pixels: do not multiply by devicePixelRatio.
+        handle = self.window().windowHandle()
+        screen = handle.screen() if handle else QtWidgets.QApplication.primaryScreen()
+        return QtCore.QSizeF(screen.availableGeometry().size()) if screen else QtCore.QSizeF(1920, 1080)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        handle = self.window().windowHandle()
+        if handle is not self._screen_window:
+            if self._screen_window is not None:
+                try:
+                    self._screen_window.screenChanged.disconnect(self._screen_changed)
+                except (TypeError, RuntimeError):
+                    pass
+            self._screen_window = handle
+            if handle is not None:
+                handle.screenChanged.connect(self._screen_changed)
+        self._screen_changed(handle.screen() if handle else QtWidgets.QApplication.primaryScreen())
+
+    def _screen_changed(self, screen):
+        if screen is not self._observed_screen:
+            if self._observed_screen is not None:
+                try:
+                    self._observed_screen.availableGeometryChanged.disconnect(self.schedule_adapt)
+                except (TypeError, RuntimeError):
+                    pass
+            self._observed_screen = screen
+            if screen is not None:
+                screen.availableGeometryChanged.connect(self.schedule_adapt)
+        self.schedule_adapt()
 
     def schedule_adapt(self):
         if self._view_reference is None:
@@ -1040,13 +1074,13 @@ class CanvasView(QtWidgets.QGraphicsView):
             self.remember_view()
             return
         size, zoom, center = self._view_reference
-        rect = self.available_rect()
+        screen = self.screen_size()
         if size.width() <= 0 or size.height() <= 0:
             self.remember_view()
             return
-        # Always scale from the user's reference, not the preceding resize:
-        # narrow/wide panel transitions and min zoom must not accumulate drift.
-        target = max(.12, min(3.5, zoom * min(rect.width() / size.width(), rect.height() / size.height())))
+        # Only a screen-size change adjusts scale. Window/panel changes merely
+        # keep the same scene center visible, without shrinking nodes.
+        target = max(.12, min(3.5, zoom * min(screen.width() / size.width(), screen.height() / size.height())))
         if abs(self.transform().m11() - target) < .0001:
             self._center_available(center)
             return
@@ -1060,28 +1094,29 @@ class CanvasView(QtWidgets.QGraphicsView):
 
     def view_state(self):
         center = self.mapToScene(self.viewport().rect().center())
-        size = self.available_rect().size()
+        size = self.screen_size()
         return {'zoom': self.transform().m11(), 'x': center.x(), 'y': center.y(),
-                'viewport': [size.width(), size.height()]}
+                'screen': [size.width(), size.height()]}
 
     def restore_view(self, state):
         self._adapt_timer.stop()
         zoom = min(3.5, max(.12, float(state.get('zoom', 1))))
-        previous = state.get('viewport')
+        # Legacy viewport measurements must not change the restored zoom.
+        previous = state.get('screen')
         if (isinstance(previous, (list, tuple)) and len(previous) == 2 and
                 all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0 for v in previous)):
-            rect = self.available_rect()
-            zoom = max(.12, min(3.5, zoom * min(rect.width() / previous[0], rect.height() / previous[1])))
+            screen = self.screen_size()
+            zoom = max(.12, min(3.5, zoom * min(screen.width() / previous[0], screen.height() / previous[1])))
         self.resetTransform();self.scale(zoom, zoom)
         self.centerOn(float(state.get('x', 0)), float(state.get('y', 0)))
         self.remember_view()
 
     def initial_node_size(self, node):
-        rect = self.available_rect()
-        zoom = self.transform().m11()
+        screen = self.screen_size()
+        factor = min(screen.width() / 1920, screen.height() / 1080)
         width, height = NodeItem.minimum_size(node)
-        return [round(max(width, min(420, rect.width() * .42 / zoom))),
-                round(max(height, min(320, rect.height() * .4 / zoom)))]
+        return [round(max(width, min(480, 350 * factor))),
+                round(max(height, min(360, 270 * factor)))]
 
     def reveal_nodes(self, identities):
         self._adapt_timer.stop()
@@ -1094,9 +1129,6 @@ class CanvasView(QtWidgets.QGraphicsView):
             return
         rect = rect.adjusted(-16, -16, 16, 16)
         available = self.available_rect()
-        zoom = max(.12, min(self.transform().m11(), available.width() / rect.width(), available.height() / rect.height()))
-        if zoom < self.transform().m11():
-            self.resetTransform();self.scale(zoom, zoom)
         shown = self.mapToScene(available.toRect()).boundingRect()
         dx = min(0, rect.left() - shown.left()) + max(0, rect.right() - shown.right())
         dy = min(0, rect.top() - shown.top()) + max(0, rect.bottom() - shown.bottom())

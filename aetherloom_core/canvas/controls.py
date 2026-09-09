@@ -18,6 +18,27 @@ def node_choice(mime):
     return None
 
 
+class CanvasStatus(QtWidgets.QLabel):
+    """Single-line feedback that never grows over the canvas controls."""
+    def __init__(self, text='', parent=None):
+        super().__init__('', parent)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
+        self.setText(text)
+
+    def setText(self, text):
+        self._full_text = str(text)
+        self.setToolTip(self._full_text)
+        self._elide()
+
+    def _elide(self):
+        super().setText(self.fontMetrics().elidedText(
+            self._full_text.replace('\n', ' · '), QtCore.Qt.ElideRight, max(0, self.contentsRect().width())))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._elide()
+
+
 class NodeLibrary(QtWidgets.QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
