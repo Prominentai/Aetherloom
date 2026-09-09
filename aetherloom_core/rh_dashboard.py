@@ -399,8 +399,9 @@ class Dashboard(QtCore.QObject):
         titles.addWidget(self.subtitle)
         header.addLayout(titles, 1)
         toggle = QtWidgets.QPushButton('连接设置')
-        toggle.setCheckable(True)
-        toggle.toggled.connect(connection.setVisible)
+        from .rh_connections import open_connection_settings
+        toggle.clicked.connect(lambda: open_connection_settings(self.owner))
+        self.connection_button = toggle
         header.addWidget(toggle)
         queue = QtWidgets.QPushButton('任务队列')
         queue.setObjectName('rhPrimaryButton')
@@ -409,6 +410,18 @@ class Dashboard(QtCore.QObject):
         layout.insertWidget(0, hero)
         layout.insertWidget(1, connection)
         connection.hide()
+        # Keep application actions visible; the legacy single-key controls stay
+        # bound for existing callers while both pages use the same list editor.
+        actions = QtWidgets.QHBoxLayout()
+        first_row = body.itemAt(0).layout()
+        for index in reversed(range(first_row.count())):
+            widget = first_row.itemAt(index).widget()
+            if isinstance(widget, QtWidgets.QPushButton):
+                first_row.removeWidget(widget)
+                actions.insertWidget(0, widget)
+                widget.show()
+        actions.addStretch(1)
+        layout.insertLayout(2, actions)
 
     def apply_thumbnail(self, reference, path):
         button = reference()

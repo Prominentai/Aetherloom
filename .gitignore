@@ -4,6 +4,7 @@ settings*.json
 running_tasks*.json
 task_records/
 canvases/
+model_library/
 *.aethercanvas.zip
 *.aethercanvas
 *.aetherloom.json

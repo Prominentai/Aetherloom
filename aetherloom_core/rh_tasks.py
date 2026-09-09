@@ -264,6 +264,7 @@ class TaskLifecycle:
         self._download_retry_due = {}
         self._progress_due = {}
         self._progress_connected = set()
+        self._progress_sources = OrderedDict()
         self._receipt_maintenance_due = 0
         self._receipt_maintenance_worker = None
         # Cancellation shares the bounded status pool. No per-task retry threads.
@@ -385,6 +386,7 @@ class TaskLifecycle:
                     self._progress_connected.discard(task_id)
                     self.owner._rh_progress_entries.pop(task_id, None)
                     if status in TERMINAL_STATUSES:
+                        self._progress_sources.pop(task_id, None)
                         self._progress_due.pop(task_id, None)
                 if status in TERMINAL_STATUSES:
                     self._receipt_maintenance_due = 0
@@ -454,17 +456,31 @@ class TaskLifecycle:
                         return 'TASK_STATUS:{}:{}'.format(parts[1], state)
         return event
 
-    def poll_progress(self, task_id, webapp_id, api_key, base_url, status):
-        """Called by existing live/recovery polls; progress failure is non-fatal."""
+    def register_progress_source(self, task_id, response):
+        """Keep signed socket URLs in bounded session memory, never task JSON."""
+        from api_calls.call_rh import progress_connection_url
+        url = progress_connection_url(response)
+        if url and not self.stop_event.is_set():
+            with self.lock:
+                self._progress_sources[str(task_id)] = url
+                self._progress_sources.move_to_end(str(task_id))
+                while len(self._progress_sources) > 512:
+                    self._progress_sources.popitem(last=False)
+
+    def poll_progress(self, task_id, webapp_id, api_key, base_url, status, query=None):
+        """Reuse supplied progress metadata without issuing a second HTTP poll."""
         if status != 'RUNNING' or self._cancelled(task_id):
             return
+        if query:
+            self.register_progress_source(task_id, query)
         with self.lock:
             now = time.monotonic()
             if task_id in self._progress_connected or now < self._progress_due.get(task_id, 0):
                 return
             self._progress_due[task_id] = now + 15
         try:
-            url = self._api().get_progress_connection(api_key, task_id, base_url=base_url, timeout=8)
+            with self.lock:
+                url = self._progress_sources.get(task_id)
             if url and not self._cancelled(task_id):
                 self.emit(str(webapp_id), f'TASK_PROGRESS_SOURCE:{task_id}:{url}')
         except Exception:
@@ -785,6 +801,7 @@ class TaskLifecycle:
         """One cloud status request; a successful task moves to the download pool."""
         webapp_id = context['webapp_id']
         deferred = False
+        query = None
         try:
             if self._recovery_stopped(task_id):
                 return
@@ -802,6 +819,7 @@ class TaskLifecycle:
                 reply = self._validate(self._api().get_status(
                     context['api_key'], task_id, base_url=context['base_url'], timeout=15))
                 remote_status = reply.get('data')
+                query = reply.get('query')
             remote_status = remote_status.strip().upper() if isinstance(remote_status, str) else ''
             if remote_status == 'CANCELLED':
                 remote_status = 'CANCELED'
@@ -828,7 +846,7 @@ class TaskLifecycle:
                     self._download_task(task_id, context)
             elif remote_status in ('FAILED', 'CANCELED', 'QUEUED', 'RUNNING'):
                 self._status(webapp_id, task_id, remote_status)
-                self.poll_progress(task_id, webapp_id, context['api_key'], context['base_url'], remote_status)
+                self.poll_progress(task_id, webapp_id, context['api_key'], context['base_url'], remote_status, query)
             else:
                 self._status(webapp_id, task_id, 'POLL_TIMEOUT')
         except Exception:
@@ -1030,3 +1048,4 @@ class TaskLifecycle:
             for task_id in self._pending_downloads:
                 self.owner._rh_recovering_tasks.discard(task_id)
             self._pending_downloads.clear()
+            self._progress_sources.clear()

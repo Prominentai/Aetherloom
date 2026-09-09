@@ -701,6 +701,7 @@ class RhExecutionService(QtCore.QObject):
                 origin=copy.deepcopy(snapshot.get('origin') or {}), submission_order=order,
                 task_document=self.documents.reference('applications', run_id))
             response_data = response.get('data') if isinstance(response, dict) else None
+            self.lifecycle.register_progress_source(task_id, response)
             returned_status = str(response_data.get('taskStatus') or '').upper() if isinstance(response_data, dict) else ''
             returned_status = 'CANCELED' if returned_status == 'CANCELLED' else returned_status
             if returned_status == 'SUCCESS':

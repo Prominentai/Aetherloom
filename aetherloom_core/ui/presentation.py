@@ -704,6 +704,12 @@ class PresentationMixin:
             self._decode_page.apply_theme()
         if hasattr(self, '_rh_dashboard'):
             self._rh_dashboard.apply_theme()
+        connection_dialog = getattr(self, '_rh_connection_dialog', None)
+        if connection_dialog is not None:
+            connection_dialog.panel.apply_theme()
+        from aetherloom_core.rh_model_picker import ModelPicker
+        for picker in self.findChildren(ModelPicker):
+            picker.apply_theme()
         from aetherloom_core.api_manager_ui import apply_theme as apply_api_theme
         apply_api_theme(self, mode)
         from aetherloom_core.ui.preferences import apply_settings_theme

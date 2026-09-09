@@ -242,48 +242,61 @@ class CanvasPage(QtWidgets.QWidget):
         self.save_state.setObjectName('canvasMuted')
         heading.addWidget(self.save_state)
         layout.addLayout(heading)
-        toolbar = QtWidgets.QToolBar()
+        toolbar = QtWidgets.QToolBar();self.toolbar=toolbar
         toolbar.setMovable(False)
         toolbar.setIconSize(QtCore.QSize(16, 16))
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
-        self.palette_action = toolbar.addAction('节点库')
+        self.palette_action = QtWidgets.QAction('显示节点库',self)
         self.palette_action.setCheckable(True)
         self.palette_action.setChecked(True)
         self.palette_action.toggled.connect(lambda checked: self.library.setVisible(checked))
-        package_button = QtWidgets.QToolButton()
-        package_button.setText('文件')
-        package_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
-        package_menu = QtWidgets.QMenu(package_button)
+        package_menu = QtWidgets.QMenu('画布',toolbar);self.document_menu=package_menu
         for label, callback in [('新建画布', self.new_canvas), ('打开画布…', self.open_canvas), ('保存', self.save), ('另存为…', self.save_as)]:
             package_menu.addAction(label, callback)
         package_menu.addSeparator()
         package_menu.addAction('导入工作流 JSON…', self.import_canvas)
         package_menu.addAction('导出工作流 JSON…', self.export_canvas)
-        package_button.setMenu(package_menu)
-        toolbar.addWidget(package_button)
-        toolbar.addAction('保存', self.save)
+        def add_menu(menu):
+            action=menu.menuAction();toolbar.addAction(action)
+            toolbar.widgetForAction(action).setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        add_menu(package_menu)
+        self.add_node_action=toolbar.addAction('＋ 添加节点',self._quick_add_node)
+        self.add_node_action.setToolTip('搜索并添加 App 或基础节点 · 画布内按 Tab')
+        toolbar.widgetForAction(self.add_node_action).setObjectName('canvasAddNodeButton')
         toolbar.addSeparator()
         self.run_action = QtWidgets.QAction('运行画布', self)
         self.run_action.triggered.connect(lambda: self.run_canvas())
         self.stop_action = QtWidgets.QAction('全部终止', self)
         self.stop_action.setToolTip('取消当前画布正在运行与排队的全部工作流组；保留已完成结果')
         self.stop_action.triggered.connect(self.stop_canvas)
-        self.inspector_action = toolbar.addAction('设置')
+        self.inspector_action = QtWidgets.QAction('显示节点设置',self)
         self.inspector_action.setCheckable(True)
         self.inspector_action.setChecked(True)
         self.inspector_action.toggled.connect(self._toggle_inspector)
-        toolbar.addAction('适应全部', lambda: self.view.fit_nodes())
-        self.connection_action = toolbar.addAction('RH 连接', self._connection_settings)
+        edit_menu=QtWidgets.QMenu('编辑',toolbar);self.edit_menu=edit_menu
+        self.undo_action=edit_menu.addAction('撤销\tCtrl+Z',self.undo)
+        self.redo_action=edit_menu.addAction('重做\tCtrl+Y',self.redo)
+        edit_menu.addSeparator()
+        edit_menu.addAction('复制节点\tCtrl+C',self.copy_nodes)
+        edit_menu.addAction('粘贴节点\tCtrl+V',self.paste_nodes)
+        edit_menu.addAction('删除所选\tDelete',self.delete_selected)
+        add_menu(edit_menu)
+        view_menu=QtWidgets.QMenu('视图',toolbar);self.view_menu=view_menu
+        view_menu.addAction(self.palette_action);view_menu.addAction(self.inspector_action);view_menu.addSeparator()
+        view_menu.addAction('适应全部节点',lambda:self.view.fit_nodes())
+        view_menu.addAction('恢复 100% 缩放',self._reset_canvas_zoom)
+        add_menu(view_menu)
+        spacer=QtWidgets.QWidget();spacer.setObjectName('canvasToolbarSpacer');spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding,QtWidgets.QSizePolicy.Preferred)
+        toolbar.addWidget(spacer)
+        self.connection_action=toolbar.addAction('RH 连接',self._connection_settings)
         self.connection_action.setToolTip('与 RH App 主页共享站点和 API key 设置')
         self.queue_action = toolbar.addAction('工作流队列')
         self.queue_action.setCheckable(True)
         self.queue_action.triggered.connect(lambda checked: self._show_workflow_queue(checked))
         self.queue_action.setToolTip('显示 / 隐藏所有画布的工作流队列，可展开任务查看 App')
-        package_menu.addSeparator()
-        self.undo_action = package_menu.addAction('撤销画布编辑', self.undo)
         self.undo_action.setToolTip('撤销画布编辑 · Ctrl+Z')
-        self.redo_action = package_menu.addAction('重做画布编辑', self.redo)
         self.redo_action.setToolTip('重做画布编辑 · Ctrl+Y')
+        view_menu.addSeparator();view_menu.addAction(self.queue_action)
         layout.addWidget(toolbar)
         self.missing_banner = QtWidgets.QFrame()
         self.missing_banner.setObjectName('canvasMissingApps')
@@ -307,24 +320,37 @@ class CanvasPage(QtWidgets.QWidget):
         self.library.setMaximumWidth(300)
         library_layout = QtWidgets.QVBoxLayout(self.library)
         library_layout.setContentsMargins(12, 12, 12, 12)
-        library_title = QtWidgets.QLabel('添加节点')
+        library_title = QtWidgets.QLabel('节点库')
         library_title.setObjectName('canvasSectionTitle')
-        library_layout.addWidget(library_title)
+        library_heading=QtWidgets.QHBoxLayout();library_heading.addWidget(library_title,1)
+        library_close=QtWidgets.QToolButton();library_close.setText('×');library_close.setToolTip('收起节点库，可从“视图”重新打开')
+        library_close.clicked.connect(lambda:self.palette_action.setChecked(False));library_heading.addWidget(library_close)
+        library_layout.addLayout(library_heading)
+        self.library_tabs=QtWidgets.QTabBar();self.library_tabs.setObjectName('canvasLibraryTabs')
+        for name in ('全部','App','基础'):self.library_tabs.addTab(name)
+        self.library_tabs.setExpanding(True);self.library_tabs.setDrawBase(False);library_layout.addWidget(self.library_tabs)
         self.search = QtWidgets.QLineEdit()
         self.search.setPlaceholderText('搜索 App 或基础节点')
+        self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._filter_library)
         library_layout.addWidget(self.search)
-        self.library_list = QtWidgets.QListWidget()
-        self.library_list.setWordWrap(True)
+        from .controls import NodeLibrary
+        self.library_list = NodeLibrary()
+        self.library_list.setWordWrap(False);self.library_list.setTextElideMode(QtCore.Qt.ElideRight)
         self.library_list.setSpacing(3)
-        self.library_list.itemDoubleClicked.connect(self._library_add)
+        self.library_list.itemActivated.connect(self._library_add)
+        self.search.returnPressed.connect(lambda:self._library_add(self.library_list.currentItem()))
         library_layout.addWidget(self.library_list, 1)
-        add = QtWidgets.QPushButton('添加所选节点')
+        self.library_count=QtWidgets.QLabel();self.library_count.setObjectName('canvasMuted');self.library_count.setWordWrap(True);library_layout.addWidget(self.library_count)
+        self.library_hint=QtWidgets.QLabel('拖入画布定位添加\n也可双击节点或按回车');self.library_hint.setObjectName('canvasMuted');self.library_hint.setWordWrap(True);library_layout.addWidget(self.library_hint)
+        add = QtWidgets.QPushButton('添加到画布');self.library_add_button=add
         add.clicked.connect(lambda: self._library_add(self.library_list.currentItem()))
         library_layout.addWidget(add)
         refresh = QtWidgets.QPushButton('刷新已添加 App')
         refresh.clicked.connect(self.refresh_apps)
         library_layout.addWidget(refresh)
+        self.library_tabs.currentChanged.connect(self._filter_library)
+        self.library_list.currentItemChanged.connect(lambda current,previous:add.setEnabled(current is not None and not current.isHidden()))
         self.splitter.addWidget(self.library)
         self.center = QtWidgets.QFrame()
         self.center.installEventFilter(self)
@@ -345,6 +371,7 @@ class CanvasPage(QtWidgets.QWidget):
         self.scene.decode_requested.connect(self._focus_decode)
         self.scene.action_requested.connect(self._action)
         self.view.files_dropped.connect(self._drop_files)
+        self.view.node_dropped.connect(lambda choice,position:self._insert_choice(choice,position))
         self.view.view_changed.connect(self._view_changed)
         center_layout.addWidget(self.view)
         self.run_panel = QtWidgets.QFrame(self.center)
@@ -589,15 +616,31 @@ class CanvasPage(QtWidgets.QWidget):
 
     def _filter_library(self):
         text = self.search.text().strip().lower()
+        category=self.library_tabs.currentIndex();visible=[]
         for index in range(self.library_list.count()):
             item = self.library_list.item(index)
-            item.setHidden(text not in (item.text() + item.toolTip()).lower())
+            group,_=item.data(QtCore.Qt.UserRole)
+            item.setHidden(text not in (item.text()+item.toolTip()).lower() or (category==1 and group!='app') or (category==2 and group!='base'))
+            if not item.isHidden():visible.append(item)
+        current=self.library_list.currentItem()
+        if current is None or current.isHidden():self.library_list.setCurrentItem(visible[0] if visible else None)
+        self.library_add_button.setEnabled(bool(visible))
+        self.library_count.setText(f'{len(visible)} 个可用节点' if visible else '没有匹配的节点')
+        self.library_hint.setText('拖入画布定位添加\n也可双击节点或按回车' if visible else '试试其他关键词；App 需先在 RH 应用页添加。')
+
+    def _quick_add_node(self):
+        position=self.view.mapToScene(self.view.available_rect().center().toPoint())
+        self._show_node_search(position)
+
+    def _reset_canvas_zoom(self):
+        center=self.view.mapToScene(self.view.available_rect().center().toPoint())
+        self.view.resetTransform();self.view._center_available(center);self.view.view_changed.emit()
 
     def _library_add(self, item):
-        if item is None:
+        if item is None or item.isHidden():
             return
         group, value = item.data(QtCore.Qt.UserRole)
-        center = self.view.mapToScene(self.view.viewport().rect().center())
+        center = self.view.mapToScene(self.view.available_rect().center().toPoint())
         self._insert_choice({'group': group, 'value': value}, center - QtCore.QPointF(134, 90))
 
     def _make_node(self, group, value):
@@ -714,6 +757,7 @@ class CanvasPage(QtWidgets.QWidget):
     def _insert_choice(self, choice, position, anchor=None):
         try:
             node = self._make_node(choice['group'], choice['value'])
+            node['size'] = self.view.initial_node_size(node)
             node['x'], node['y'] = position.x(), position.y()
             candidate = copy.deepcopy(self.document)
             candidate['nodes'].append(node)
@@ -733,6 +777,7 @@ class CanvasPage(QtWidgets.QWidget):
         self.document = candidate
         self._mark_stale(anchor['node_id'] if anchor and not anchor['output'] else node['id'])
         self._edited(rebuild=True, select=node['id'])
+        self.view.reveal_nodes([node['id']])
 
     def _prepare_node(self, node, rh_nodes):
         model.app_reference(node.get('app') or {})
@@ -768,10 +813,8 @@ class CanvasPage(QtWidgets.QWidget):
         self.scene.set_document(doc)
         self._empty_inspector()
         view = doc.get('view') or {}
-        self.view.resetTransform()
-        zoom = min(3.5, max(.12, float(view.get('zoom', 1))))
-        self.view.scale(zoom, zoom)
-        self.view.centerOn(float(view.get('x', 0)), float(view.get('y', 0)))
+        self.view.restore_view(view)
+        zoom = self.view.transform().m11()
         self._updating, self._dirty = False, False
         attached = self.engine.attach(doc)
         if attached:
@@ -1153,6 +1196,7 @@ class CanvasPage(QtWidgets.QWidget):
         self._edited(rebuild=True)
         for node in graph['nodes']:
             self.scene.nodes[node['id']].setSelected(True)
+        self.view.reveal_nodes(ids.values())
 
     def delete_selected(self):
         node_ids = {item.node['id'] for item in self.scene.selectedItems() if isinstance(item, NodeItem)}
@@ -1218,18 +1262,22 @@ class CanvasPage(QtWidgets.QWidget):
             self._message('请拖入图像、视频或音频文件。')
             return
         self._checkpoint()
+        created, offset = [], 0
         for index, (kind, files) in enumerate(groups.items()):
-            node = model.new_node(kind, params={'files': files}, x=position.x() + index * 300, y=position.y())
+            node = model.new_node(kind, params={'files': files}, x=position.x() + offset, y=position.y())
+            node['size'] = self.view.initial_node_size(node)
+            offset += node['size'][0] + 48
+            created.append(node['id'])
             self.document['nodes'].append(node)
         self._edited(rebuild=True, select=node['id'])
+        self.view.reveal_nodes(created)
 
     def _view_changed(self):
         zoom = self.view.transform().m11()
         self.zoom_label.setText(f'{int(zoom * 100)}%')
         if self._updating:
             return
-        point = self.view.mapToScene(self.view.viewport().rect().center())
-        self.document['view'] = {'zoom': zoom, 'x': point.x(), 'y': point.y()}
+        self.document['view'] = self.view.view_state()
         if self.document['nodes']:
             self._edited()
 
@@ -1505,6 +1553,8 @@ class CanvasPage(QtWidgets.QWidget):
             self.inspector_scroll.setVisible(self.inspector_action.isChecked())
             self.splitter.setSizes([210, max(400, self.width() - 550), 300])
         self.view.overlay_exclusion = self.inspector_scroll.width() + 20 if narrow and self.inspector_scroll.isVisible() else 0
+        self.view.bottom_exclusion = self.run_panel.height() + 12
+        self.view.schedule_adapt()
         self.run_panel.raise_()
 
     def eventFilter(self, watched, event):
@@ -1560,11 +1610,11 @@ class CanvasPage(QtWidgets.QWidget):
             QWidget#aetherloomCanvasPage QLabel#canvasBuiltinReuseHint {{ color: {p['muted']}; font-size: 11px; }}
             QWidget#aetherloomCanvasPage QLabel#canvasWarning {{ color: {p['warning']}; }}
             QFrame#canvasMissingApps {{ background: {p['surface']}; border: 1px solid {p['warning']}; border-radius: 8px; }}
-            QFrame#canvasPanel, QScrollArea#canvasInspector {{ background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 11px; }}
+            QFrame#canvasPanel, QScrollArea#canvasInspector {{ background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 14px; }}
             QScrollArea#canvasInspector > QWidget > QWidget {{ background: {p['surface']}; }}
-            QFrame#canvasSurface {{ border: 1px solid {p['border']}; border-radius: 11px; }}
+            QFrame#canvasSurface {{ border: 1px solid {p['border']}; border-radius: 14px; }}
             QWidget#aetherloomCanvasPage QListWidget {{ background: transparent; border: none; outline: none; }}
-            QWidget#aetherloomCanvasPage QListWidget::item {{ border-radius: 6px; padding: 5px; }}
+            QWidget#aetherloomCanvasPage QListWidget::item {{ border-radius: 8px; padding: 8px 6px; }}
             QWidget#aetherloomCanvasPage QListWidget::item:hover {{ background: {p['hover']}; }}
             QWidget#aetherloomCanvasPage QListWidget::item:selected {{ background: {p['accent_soft']}; color: {p['accent']}; }}
             QWidget#aetherloomCanvasPage QLineEdit, QWidget#aetherloomCanvasPage QTextEdit,
@@ -1585,12 +1635,21 @@ class CanvasPage(QtWidgets.QWidget):
             QWidget#aetherloomCanvasPage QPushButton, QWidget#aetherloomCanvasPage QToolButton {{ background: {p['input']}; border: 1px solid {p['border']}; border-radius: 6px; padding: 7px 9px; }}
             QWidget#aetherloomCanvasPage QPushButton:hover, QWidget#aetherloomCanvasPage QToolButton:hover {{ background: {p['hover']}; border-color: {p['muted']}; }}
             QWidget#aetherloomCanvasPage QToolButton:checked {{ background: {p['accent_soft']}; color: {p['accent']}; }}
-            QWidget#aetherloomCanvasPage QFrame#canvasRunPanel {{ background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 10px; }}
+            QWidget#aetherloomCanvasPage QFrame#canvasRunPanel {{ background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 14px; }}
             QWidget#aetherloomCanvasPage QToolButton#canvasRunButton {{ background: {p['accent']}; color: #ffffff; border-color: {p['accent']}; padding: 10px 19px; font-weight: 600; }}
             QWidget#aetherloomCanvasPage QToolButton#canvasRunButton:disabled {{ background: {p['hover']}; color: {p['muted']}; border-color: {p['border']}; }}
             QWidget#aetherloomCanvasPage QToolButton#canvasStopButton {{ padding: 10px 14px; }}
+            QWidget#aetherloomCanvasPage QToolButton#canvasStopButton:enabled {{ color: {p['danger']}; border-color: {p['danger']}; }}
             QWidget#aetherloomCanvasPage QPushButton:disabled, QWidget#aetherloomCanvasPage QToolButton:disabled {{ color: {p['muted']}; }}
-            QWidget#aetherloomCanvasPage QToolBar {{ border: none; background: transparent; spacing: 5px; }}
+            QWidget#aetherloomCanvasPage QToolBar {{ border: 1px solid {p['border']}; border-radius: 10px; background: {p['surface']}; spacing: 5px; padding: 5px; }}
+            QWidget#aetherloomCanvasPage QToolBar QToolButton {{ background: transparent; border-color: transparent; }}
+            QWidget#aetherloomCanvasPage QToolBar QToolButton:hover {{ background: {p['hover']}; }}
+            QWidget#aetherloomCanvasPage QWidget#canvasToolbarSpacer {{ background: transparent; border: none; }}
+            QWidget#aetherloomCanvasPage QToolBar QToolButton:checked {{ background: {p['accent_soft']}; color: {p['accent']}; }}
+            QWidget#aetherloomCanvasPage QToolBar QToolButton#canvasAddNodeButton {{ background: {p['accent_soft']}; color: {p['accent']}; padding: 7px 13px; font-weight: 600; }}
+            QTabBar#canvasLibraryTabs::tab {{ background: transparent; color: {p['muted']}; border: none; border-radius: 6px; padding: 6px 8px; }}
+            QTabBar#canvasLibraryTabs::tab:selected {{ background: {p['accent_soft']}; color: {p['accent']}; }}
+            QTabBar#canvasLibraryTabs::tab:hover {{ background: {p['hover']}; }}
             QWidget#aetherloomCanvasPage QToolButton#qt_toolbar_ext_button {{ min-width: 24px; min-height: 28px; padding: 2px; }}
             QWidget#aetherloomCanvasPage QGroupBox {{ border: 1px solid {p['border']}; border-radius: 7px; margin-top: 10px; padding-top: 12px; }}
             QWidget#aetherloomCanvasPage QGroupBox::title {{ subcontrol-origin: margin; left: 9px; padding: 0 4px; }}

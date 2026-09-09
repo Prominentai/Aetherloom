@@ -453,6 +453,42 @@ def _wait_before_retry(delay, cancelled):
         time.sleep(min(0.05, remaining))
 
 
+def _record_source(record, index):
+    url = record.get('fileUrl') or record.get('url') or record.get('file')
+    if not url and isinstance(record.get('text'), str):
+        content = record['text'].encode('utf-8')
+        digest = hashlib.sha256(content).hexdigest()
+        return f'inline://text/{digest}/output-{index}.txt', content
+    return url, None
+
+
+def _save_text(content, metadata, destination, receipt, task_id, url_hash, cancelled):
+    """Materialize V2 inline text through the same atomic/verified file contract."""
+    digest = hashlib.sha256(content).hexdigest()
+    if metadata['size'] is not None and metadata['size'] != len(content):
+        raise _AttemptFailure('file-size-mismatch')
+    if metadata['sha256'] is not None and metadata['sha256'] != digest:
+        raise _AttemptFailure('sha256-mismatch')
+    temporary = None
+    try:
+        _check_cancelled(cancelled)
+        with tempfile.NamedTemporaryFile(dir=destination.parent, suffix='.part', delete=False) as output:
+            temporary = Path(output.name)
+            for offset in range(0, len(content), _CHUNK_SIZE):
+                _check_cancelled(cancelled)
+                output.write(content[offset:offset + _CHUNK_SIZE])
+            output.flush()
+            os.fsync(output.fileno())
+        _check_cancelled(cancelled)
+        os.replace(temporary, destination)
+        _write_receipt(receipt, dict(task_id=task_id, url_sha256=url_hash, size=len(content), sha256=digest))
+    except OSError as exc:
+        raise _AttemptFailure(type(exc).__name__) from None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def cleanup_output_receipts(task_id, files, output_dir):
     """Remove only this completed task's receipts, without scanning other tasks.
 
@@ -468,9 +504,9 @@ def cleanup_output_receipts(task_id, files, output_dir):
     if any(path.is_symlink() for path in receipt_dirs):
         return False
     complete = True
-    for record in files or ():
+    for index, record in enumerate(files or (), 1):
         try:
-            url = record.get('fileUrl') or record.get('url') or record.get('file')
+            url, _ = _record_source(record, index)
             filename, _ = _destination_name(task_id, url, directory)
             source = directory / filename
             key = hashlib.sha256((task_id + '\0' + _url_identity(url)).encode('utf-8')).hexdigest()
@@ -533,11 +569,11 @@ def download_outputs(task_id, files, output_dir, *, max_attempts=3, retry_delay=
         try:
             if not isinstance(record, dict):
                 raise _AttemptFailure('invalid-output-record')
-            url = record.get('fileUrl') or record.get('url') or record.get('file')
+            url, inline_text = _record_source(record, index)
             if not isinstance(url, str):
                 raise _AttemptFailure('missing-download-url')
             parsed = urlsplit(url)
-            if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+            if inline_text is None and (parsed.scheme not in ('http', 'https') or not parsed.netloc):
                 raise _AttemptFailure('invalid-download-url')
             label, _ = _output_name(task_id, url)
             metadata = _metadata(record)
@@ -552,7 +588,7 @@ def download_outputs(task_id, files, output_dir, *, max_attempts=3, retry_delay=
                 # Prefer the newest signed URL for a still-unsaved resource.
                 previous[0] = url
             else:
-                outputs[identity] = [url, dict(record), metadata]
+                outputs[identity] = [url, dict(record), metadata, inline_text]
         except (_AttemptFailure, ValueError) as exc:
             reason = exc.reason if isinstance(exc, _AttemptFailure) else 'invalid-download-url'
             failures.append(dict(filename=label, reason=reason, status=None, attempts=0))
@@ -568,7 +604,7 @@ def download_outputs(task_id, files, output_dir, *, max_attempts=3, retry_delay=
         with _task_lock(task_id, str(directory), cancelled):
             directory.mkdir(parents=True, exist_ok=True)
             receipts.mkdir(parents=True, exist_ok=True)
-            for identity, (url, record, metadata) in outputs.items():
+            for identity, (url, record, metadata, inline_text) in outputs.items():
                 _check_cancelled(cancelled)
                 filename, url_hash = _destination_name(task_id, url, directory)
                 destination = directory / filename
@@ -582,7 +618,10 @@ def download_outputs(task_id, files, output_dir, *, max_attempts=3, retry_delay=
                     continue
                 for attempt in range(1, max_attempts + 1):
                     try:
-                        _download_once(url, record, metadata, destination, receipt, task_id, url_hash, timeout, cancelled)
+                        if inline_text is not None:
+                            _save_text(inline_text, metadata, destination, receipt, task_id, url_hash, cancelled)
+                        else:
+                            _download_once(url, record, metadata, destination, receipt, task_id, url_hash, timeout, cancelled)
                         paths.append(str(destination))
                         break
                     except _AttemptFailure as exc:

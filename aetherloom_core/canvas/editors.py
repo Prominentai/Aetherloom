@@ -7,6 +7,7 @@ from pathlib import Path
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from aetherloom_core.rh_parameters import RhNumberSpinBox, RhEnumComboBox, configure_list_combo
+from aetherloom_core.rh_model_picker import ModelField, model_resource_type
 from aetherloom_core.prompt_history import PromptHistory
 from aetherloom_core.ui.widgets import CompletionTextEdit
 from .model import parameter_key, field_type
@@ -238,7 +239,11 @@ class Inspector(QtWidgets.QWidget):
             self.form.addWidget(title)
             kind = str(field.get('fieldType') or '').upper()
             media_type = field_type(field)
-            if kind in ('FLOAT', 'DOUBLE', 'NUMBER', 'INT', 'INTEGER'):
+            if model_resource_type(field):
+                editor = ModelField(field, value, self)
+                editor.editor.editingFinished.connect(lambda e=editor.editor, k=key: self.changed.emit('params.' + k, e.text()))
+                self.form.addWidget(editor)
+            elif kind in ('FLOAT', 'DOUBLE', 'NUMBER', 'INT', 'INTEGER'):
                 editor = RhNumberSpinBox(integer=kind in ('INT', 'INTEGER'))
                 editor.configure(field.get('fieldData'))
                 try:

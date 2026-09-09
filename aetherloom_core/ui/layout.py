@@ -187,6 +187,8 @@ class MainLayoutMixin:
         self.local_btn = _make_sidebar_button('本地文件', '浏览输入/输出素材', folder_icon)
         self.api_btn = _make_sidebar_button('API管理', '模型与接口管理', api_icon)
         self.runninghub_btn = _make_sidebar_button('RH应用', 'RunningHub 应用', runninghub_icon)
+        models_icon = QtGui.QIcon(os.path.join(current_dir, 'icons', 'rh_models.svg'))
+        self.rh_models_btn = _make_sidebar_button('RH模型库', '模型检索与本地收藏', models_icon)
         canvas_icon = QtGui.QIcon(os.path.join(current_dir, 'icons', 'canvas.svg'))
         self.canvas_btn = _make_sidebar_button('画布', '画布与应用工作流', canvas_icon)
         self.settings_btn = _make_sidebar_button('设置中心', '参数与目录管理', settings_icon)
@@ -199,12 +201,13 @@ class MainLayoutMixin:
         # order: Home, Runninghub (moved), then other pages
         sidebar_layout.addWidget(self.home_btn)
         sidebar_layout.addWidget(self.runninghub_btn)
+        sidebar_layout.addWidget(self.rh_models_btn)
         sidebar_layout.addWidget(self.canvas_btn)
         sidebar_layout.addWidget(self.decode_btn)
         sidebar_layout.addWidget(self.local_btn)
         sidebar_layout.addWidget(self.api_btn)
         sidebar_layout.addWidget(self.settings_btn)
-        self._sidebar_buttons = [self.home_btn, self.runninghub_btn, self.canvas_btn, self.decode_btn, self.local_btn, self.api_btn, self.settings_btn]
+        self._sidebar_buttons = [self.home_btn, self.runninghub_btn, self.rh_models_btn, self.canvas_btn, self.decode_btn, self.local_btn, self.api_btn, self.settings_btn]
         sidebar_layout.addStretch(1)
 
         theme_row = QtWidgets.QHBoxLayout()
@@ -3578,7 +3581,14 @@ class MainLayoutMixin:
                                                     pass
 
                                             # choose widget by type
-                                            if (ftype in ('IMAGE', 'VIDEO', 'AUDIO', 'UPLOAD')) or (locals().get('is_upload_field', False)):
+                                            from aetherloom_core.rh_model_picker import ModelField, model_resource_type
+                                            if model_resource_type(node):
+                                                model_field = ModelField(node, fval, app_page)
+                                                le2 = model_field.editor
+                                                le2.editingFinished.connect(lambda _le=le2, _i=idx: _persist_and_write(_le.text(), _i))
+                                                field_row.addRow(model_field)
+                                                node_widgets[idx] = {'le2': le2}
+                                            elif (ftype in ('IMAGE', 'VIDEO', 'AUDIO', 'UPLOAD')) or (locals().get('is_upload_field', False)):
                                                 # lineedit + browse
                                                 row_w = QtWidgets.QWidget()
                                                 row_l = QtWidgets.QHBoxLayout(row_w)
@@ -8803,3 +8813,5 @@ class MainLayoutMixin:
 
         from aetherloom_core.rh_execution_ui import install_canvas_page
         install_canvas_page(self)
+        from aetherloom_core.rh_model_library import install_model_library
+        install_model_library(self)

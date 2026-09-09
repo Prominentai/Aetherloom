@@ -178,54 +178,165 @@ def run_task(webapp_id: int, api_key: str, node_info_list: List[Dict[str, Any]],
 def upload_file(file_path: str, api_key: Optional[str] = None, *,
                 base_url: str = DEFAULT_BASE_URL, timeout: int = 60) -> Dict[str, Any]:
     """Upload a local resource; return only a successful response with a token."""
-    url = f"{_api_root(base_url)}/upload"
-    headers = {'Host': urlsplit(url).netloc}
-    payload = {'fileType': 'input'}
-    if api_key:
-        payload['apiKey'] = api_key
+    if not api_key:
+        raise ValueError('Upload file requires an API key')
+    url = site_base_url(base_url) + '/openapi/v2/media/upload/binary'
+    headers = {'Authorization': 'Bearer ' + api_key}
     mime_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
     with open(file_path, 'rb') as source:
         files = {'file': (os.path.basename(file_path), source, mime_type)}
-        result = _request_json('POST', url, 'Upload file', headers=headers, data=payload, files=files, timeout=timeout)
-    validate_response(result, 'Upload file', api_key=api_key)
+        result = _request_json('POST', url, 'Upload file', headers=headers, files=files, timeout=timeout)
+    # Official CN/EN upload examples differ: code 0/200 and fileName/filename.
+    # Normalize only this endpoint; task submission still requires code 0.
+    if str(result.get('code')) not in {'0', '200'}:
+        validate_response(result, 'Upload file', api_key=api_key)
     data = result.get('data')
-    if not isinstance(data, dict) or not isinstance(data.get('fileName'), str) or not data['fileName'].strip():
+    token = (data.get('fileName') or data.get('filename')) if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token.strip():
         raise RunningHubResponseError('Upload file returned an invalid response: missing data.fileName')
-    return result
+    return dict(result, code=0, data=dict(data, fileName=token))
+
+
+def list_public_models(api_key: str, resource_type: str, *, resource_name: str = '',
+                       base_models=None, tags=None, current: int = 1, size: int = 20,
+                       base_url: str = DEFAULT_BASE_URL, timeout: int = 15) -> Dict[str, Any]:
+    """One bounded page of public resources, including the documented node token.
+
+    nodeModelName is the first/default version's ComfyUI input value. Resource
+    IDs and versionResourceName storage paths are not interchangeable with it.
+    """
+    resource_type = str(resource_type).strip().upper()
+    if not api_key:
+        raise ValueError('Public model query requires an API key')
+    if resource_type not in {'CHECKPOINT', 'LORA', 'UNET', 'GGUF'}:
+        raise ValueError('Unsupported public model resource type')
+    if type(current) is not int or current < 1 or type(size) is not int or not 1 <= size <= 50:
+        raise ValueError('Invalid public model pagination')
+    payload = dict(resourceType=resource_type, resourceName=str(resource_name).strip(),
+                   current=current, size=size)
+    if base_models:
+        if not isinstance(base_models, (list, tuple)) or not all(isinstance(v, str) for v in base_models):
+            raise ValueError('base_models must be a list of names')
+        payload['baseModels'] = [v.strip() for v in base_models if v.strip()]
+    if tags:
+        if not isinstance(tags, (list, tuple)) or not all(type(v) is int and v >= 0 for v in tags):
+            raise ValueError('tags must contain numeric tag IDs')
+        payload['tags'] = list(dict.fromkeys(tags))
+    result = _request_json('POST', site_base_url(base_url) + '/openapi/v2/resource/list',
+        'List public models', headers={'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'},
+        json=payload, timeout=timeout)
+    validate_response(result, 'List public models', api_key=api_key)
+    data = result.get('data')
+    if not isinstance(data, dict) or not isinstance(data.get('records'), list):
+        raise RunningHubResponseError('Public model query returned invalid page data')
+    if len(data['records']) > size or not all(isinstance(row, dict) for row in data['records']):
+        raise RunningHubResponseError('Public model query returned invalid records')
+    try:
+        total = max(0, int(data.get('total', len(data['records']))))
+        page = int(data.get('current', current))
+    except (TypeError, ValueError, OverflowError):
+        raise RunningHubResponseError('Public model query returned invalid pagination') from None
+    if page != current:
+        raise RunningHubResponseError('Public model query returned a different page')
+    return dict(records=data['records'], current=current, total=total,
+                hasNext=data.get('hasNext') is True or current * size < total)
+
+
+def get_account_status(api_key: str, *, base_url: str = DEFAULT_BASE_URL,
+                       timeout: int = 15) -> Dict[str, Any]:
+    """Read the account belonging to this exact site/key, without task changes."""
+    if not api_key:
+        raise ValueError('Account query requires an API key')
+    result = _request_json('POST', site_base_url(base_url) + '/uc/openapi/accountStatus',
+        'Query account', headers={'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'},
+        json={'apikey': api_key}, timeout=timeout)
+    validate_response(result, 'Query account', api_key=api_key)
+    data = result.get('data')
+    if not isinstance(data, dict):
+        raise RunningHubResponseError('Query account returned invalid account data')
+    return {name: data.get(name) for name in
+            ('remainCoins', 'remainMoney', 'currency', 'currentTaskCounts', 'apiType')}
+
+
+def query_task(api_key: str, task_id: str, *, base_url: str = DEFAULT_BASE_URL,
+               timeout: int = 15) -> Dict[str, Any]:
+    """Query V2 once; task failure is data, request failure is an exception."""
+    operation = 'Query task V2'
+    result = _request_json('POST', site_base_url(base_url) + '/openapi/v2/query', operation,
+                           headers={'Authorization': 'Bearer ' + api_key, 'Content-Type': 'application/json'},
+                           json={'taskId': str(task_id)}, timeout=timeout)
+    if 'code' in result:
+        validate_response(result, operation, api_key=api_key)
+    status = str(result.get('status') or '').strip().upper()
+    if status == 'CANCELLED':
+        status = 'CANCELED'
+    code = result.get('errorCode')
+    request_errors = {'401', '403', '429', '802', '806', '811', '1002', '1003', '1004', '1014'}
+    if str(code or '') not in {'', '0'} and (status not in {'FAILED', 'CANCELED'} or str(code) in request_errors):
+        raise RunningHubAPIError(operation, str(code), _safe_message(result.get('errorMessage') or 'Query rejected', api_key))
+    if status not in {'QUEUED', 'RUNNING', 'SUCCESS', 'FAILED', 'CANCELED'}:
+        raise RunningHubResponseError('Query task V2 returned an unknown task status')
+    identity = result.get('taskId')
+    if identity is not None and str(identity) != str(task_id):
+        raise RunningHubResponseError('Query task V2 returned a mismatched taskId')
+    return dict(taskId=str(task_id), status=status, results=result.get('results'),
+                errorCode=_safe_message(code or '', api_key),
+                errorMessage=_safe_message(result.get('errorMessage') or '', api_key),
+                netWssUrl=progress_connection_url(result))
+
+
+def progress_connection_url(result) -> Optional[str]:
+    """Use only a supplied secure socket URL; never synthesize one from clientId."""
+    data = result.get('data') if isinstance(result, dict) else None
+    url = (result.get('netWssUrl') or (data.get('netWssUrl') if isinstance(data, dict) else None)) if isinstance(result, dict) else None
+    if not isinstance(url, str) or not url:
+        return None
+    try:
+        parts = urlsplit(url)
+        if (parts.scheme != 'wss' or not parts.hostname or parts.username or parts.password
+                or parts.fragment or len(url) > 16384):
+            return None
+    except ValueError:
+        return None  # Optional progress must never invalidate a task response.
+    return url
+
+
+def _output_records(result):
+    values = result.get('results')
+    if not isinstance(values, list):
+        raise RunningHubResponseError('Query task V2 returned no output list')
+    records = []
+    for value in values:
+        if not isinstance(value, dict):
+            raise RunningHubResponseError('Query task V2 returned an invalid output record')
+        record = {key: value[key] for key in ('nodeId', 'fileSize', 'sha256', 'text') if key in value}
+        record.update(fileUrl=value.get('url'), fileType=value.get('outputType'))
+        records.append(record)
+    return records
 
 
 def get_status(api_key: str, task_id: str, *, base_url: str = DEFAULT_BASE_URL,
                timeout: int = 15) -> Dict[str, Any]:
-    return _post_task('status', api_key, {'apiKey': api_key, 'taskId': task_id},
-                      base_url=base_url, timeout=timeout, operation='Query task status')
+    result = query_task(api_key, task_id, base_url=base_url, timeout=timeout)
+    return dict(code=0, data=result['status'], query=result)
 
 
 def get_outputs(api_key: str, task_id: str, *, base_url: str = DEFAULT_BASE_URL,
                 timeout: int = 30) -> Dict[str, Any]:
-    return _post_task('outputs', api_key, {'apiKey': api_key, 'taskId': task_id},
-                      base_url=base_url, timeout=timeout, operation='Get task outputs')
+    result = query_task(api_key, task_id, base_url=base_url, timeout=timeout)
+    return outputs_from_query(result)
+
+
+def outputs_from_query(result):
+    if result.get('status') != 'SUCCESS':
+        raise RunningHubResponseError('Task output is not ready')
+    return dict(code=0, data=_output_records(result))
 
 
 def get_progress_connection(api_key: str, task_id: str, *, base_url: str = DEFAULT_BASE_URL,
                             timeout: int = 8) -> Optional[str]:
-    """Official outputs API returns code=804 + data.netWssUrl while running.
-
-    code=813 (queued) and code=0 (finished) are normal races with status polling.
-    Never expose the signed WebSocket URL in diagnostics or persist it to disk.
-    """
-    result = _post_task('outputs', api_key, {'apiKey': api_key, 'taskId': task_id},
-                        base_url=base_url, timeout=timeout, operation='Query task progress', validate=False)
-    if str(result.get('code')) not in {'0', '804', '813'}:
-        validate_response(result, 'Query task progress', api_key=api_key)
-    data = result.get('data')
-    url = data.get('netWssUrl') if isinstance(data, dict) else None
-    if not isinstance(url, str) or not url:
-        return None
-    parts = urlsplit(url)
-    if (parts.scheme != 'wss' or not parts.hostname or parts.username or parts.password
-            or parts.fragment or len(url) > 16384):
-        raise RunningHubResponseError('Query task progress returned an invalid WebSocket URL')
-    return url
+    # Compatibility entry point for callers outside the shared lifecycle.
+    return query_task(api_key, task_id, base_url=base_url, timeout=timeout).get('netWssUrl')
 
 
 def get_nodeinfo(webapp_id: str, api_key: str, *, base_url: str = DEFAULT_BASE_URL,

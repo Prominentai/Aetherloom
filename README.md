@@ -53,6 +53,17 @@
 4. 提示词自动补全
 5. 提示词翻译与扩写
 6. 图像反推（支持批量）
+7. RH 模型库：检索公共模型、选择版本、复制 model name；本地收藏支持置顶、编辑和自建私有模型快捷项，与 App 和画布的模型选择器共用
+
+模型库提供“公共模型”“本地收藏”“我的上传”三个分页。“本地收藏”和“我的上传”按 `.cn` / `.ai` 站点和模型类型独立保存，重启后保留，可在没有 API Key 时查看和选用。星标只增删本地收藏，不修改官网收藏或上传记录。“自建收藏”创建常用模型快捷项；“登记上传模型”创建已上传模型的本地记录，不上传模型文件。两组数据分别位于 `model_library/favorites.sqlite3` 和 `model_library/uploads.sqlite3`，不包含在发布包中。
+
+自建收藏支持拖入封面图片，保存后存放在 `model_library/covers/`，再次替换会覆盖原封面。收藏界面仅展示图片，不展示封面路径。
+
+两组均支持单个模型链接导入和官网批量导入。Windows 下使用默认浏览器当前配置的官网登录状态（支持 Chrome、Edge、Brave、Vivaldi），已登录可直接点击“读取我的收藏”或“读取我的上传”。未登录或登录失效时，点击“在默认浏览器登录”，在普通浏览器窗口完成登录后返回客户端重新读取；中文站和国际站需分别登录。不会创建无痕窗口，也不会关闭用户浏览器。客户端只读当前配置的 RH 登录记录，不复制浏览器配置、不读取其他网站凭据；登录状态仅在本次请求内存中使用，不写入本地模型库。暂不支持的默认浏览器会明确提示。
+
+后台通过 HTTP 自动分页获取数据，无需打开官网模型列表或手动翻页。检查读取摘要后点击“确认导入”，才写入对应本地分组。默认导入首个可用版本，也可选择全部可用版本；重复项保留本地设置，支持停止并导入已读取部分，单次最多读取 10000 个模型。私有模型详情链接同样复用默认浏览器的登录状态。使用多个浏览器配置时，请在最近使用的普通配置中登录目标账号后读取。
+
+基础模型类别从官网枚举获取，创建界面支持搜索下拉选择，模型筛选支持多选；保留自定义名称输入，并缓存枚举供离线使用。
 
 
 This application aims to reduce the computational burden of deploying local models by leveraging APIs to access online models/workflows, while providing a user-friendly local interface that enriches AI painting capabilities and simplifies operations as much as possible.
@@ -65,6 +76,7 @@ Currently implemented features:
 4. Prompt auto-completion
 5. Prompt translation and expansion
 6. Image inference (batch supported)
+7. RH model library: public model search, version selection, model-name copying, and persistent local favorites shared by App and canvas model pickers. Custom favorites provide shortcuts to existing private model names.
 
 
 # v0.1.0 alpha版部分功能展示
